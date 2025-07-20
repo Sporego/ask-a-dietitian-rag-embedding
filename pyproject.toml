@@ -7,9 +7,11 @@ authors = [
 ]
 license = {text = "AGPL-3.0 license"}
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13, <4.0"
 dependencies = [
-    "fastapi[standard] (>=0.116.1,<0.117.0)"
+    "fastapi[standard] (>=0.116.1,<0.117.0)",
+    "pymupdf4llm (>=0.0.27,<0.0.28)",
+    "llama-index (>=0.12.50,<0.13.0)"
 ]
 
 
