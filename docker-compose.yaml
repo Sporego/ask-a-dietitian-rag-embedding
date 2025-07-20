@@ -1,0 +1,10 @@
+version: "3"
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: embedding
+      POSTGRES_PASSWORD: test
+      POSTGRES_USER: test
