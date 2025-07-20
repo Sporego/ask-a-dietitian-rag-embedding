@@ -9,6 +9,7 @@ license = {text = "AGPL-3.0 license"}
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "fastapi[standard] (>=0.116.1,<0.117.0)"
 ]
 
 
