@@ -3,7 +3,7 @@ import fastapi
 import psycopg
 import psycopg.rows
 import psycopg_pool
-import functools
+import pydantic
 
 import config
 import migrations.migrator as migrator
@@ -30,6 +30,9 @@ pool = psycopg_pool.ConnectionPool (
 #             conn.row_factory = psycopg.rows.dict_row
 #             return func(conn, *args, **kwargs)
 #     return wrapper
+
+class Question(pydantic.BaseModel):
+    query: str
 
 
 @app.middleware("http")
@@ -63,8 +66,23 @@ def read_item(item_id: int, q: typing.Union[str, None] = None):
     return {"item_id": item_id, "q": q}
 
 @app.post("/question/")
-def read_question(request : fastapi.Request, question):
+def read_question(request: fastapi.Request, question: Question):
     with request.state.conn_pool.connection() as conn:
-        print(conn.execute("SELECT * FROM embeddings").fetchall())
+        # convert user query to vector
+        user_vec = stub_embed_user_query(question.query)
 
-    return question.question
+        # lookup similar vectors in db
+        stub_get_similar_vectors(user_vec)
+
+        # pass off request to chatgpt
+        return stub_chatgpt_summorize(question.query, [])
+
+def stub_embed_user_query(query: str):
+    pass
+
+def stub_get_similar_vectors(vec: any):
+    # res = conn.execute("SELECT * FROM embeddings ORDER BY embedding <=> %s LIMIT 5;", user_vec).fetchall()
+    pass
+
+def stub_chatgpt_summorize(user_query: str, contexts: typing.List[typing.OrderedDict[str, str]]):
+    pass
