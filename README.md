@@ -9,3 +9,4 @@
     - User: `test`
     - Pass (not part of the connection string): `test`
     - DB name: `embedding`
+1. Run `make dev`
