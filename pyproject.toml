@@ -17,7 +17,8 @@ dependencies = [
     "llama-index-embeddings-huggingface (>=0.5.5,<0.6.0)",
     "sentence-transformers (>=5.0.0,<6.0.0)",
     "accelerate (>=1.9.0,<2.0.0)",
-    "psycopg[binary,pool] (>=3.2.9,<4.0.0)"
+    "psycopg[binary,pool] (>=3.2.9,<4.0.0)",
+    "torch (==2.7.1+cu128)"
 ]
 
 
@@ -25,5 +26,13 @@ dependencies = [
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
+[tool.poetry]
+package-mode = false  # skip packaging your own code if you just want deps
+
+[[tool.poetry.source]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+priority = "explicit"
+
 [tool.poetry.dependencies]
-torch = { version = "^2.3.0+cu128", source = "https://download.pytorch.org/whl/cu128" }
+torch = {version = "==2.7.1+cu128", source = "pytorch-cu128"}
