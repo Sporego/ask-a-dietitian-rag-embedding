@@ -1,82 +1,88 @@
-#from config import FILBERT_TOKEN
-from typing import Union
-from fastapi import FastAPI
-from pydantic import BaseModel
-import sys
+import typing
+import fastapi
 import psycopg
+import psycopg.rows
+import psycopg_pool
+import pydantic
+
+import config
+import migrations.migrator as migrator
+
+app = fastapi.FastAPI()
+
+pool = psycopg_pool.ConnectionPool (
+        "postgresql://{user}:{password}@{host}:{port}/{name}".format(
+            user=config.DB_USER, password=config.DB_PASS,
+            host=config.DB_HOST, port=config.DB_PORT,
+            name=config.DB_NAME
+            ),
+        num_workers=3,
+    )
+
+# T = typing.TypeVar('T')
+# P = typing.ParamSpec('P')
+# ConnFunc = typing.Callable[typing.Concatenate[psycopg.Connection, P], T]
+
+# def with_db_connection(func: ConnFunc[P, T]) -> typing.Callable[P, T]:
+#     @functools.wraps(func)
+#     def wrapper(*args : P.args, **kwargs: P.kwargs) -> T:
+#         with pool.connection() as conn:
+#             conn.row_factory = psycopg.rows.dict_row
+#             return func(conn, *args, **kwargs)
+#     return wrapper
+
+class Question(pydantic.BaseModel):
+    query: str
 
 
-class QuestionModel(BaseModel):
-    question: str
+@app.middleware("http")
+async def db_session_middleware(request: fastapi.Request, call_next):
+    request.state.conn_pool = pool
+    response = await call_next(request)
+    return response
 
-class EmbeddingDatabase():
-    async def create_pool(self):
-        await psycopg.create_pool()
-        #self.pool = await asyncpg.create_pool(dsn='MYDB_DSN')
+@app.on_event("startup")
+async def startup():
+    pool.open(wait=True)
+    with pool.connection() as conn:
+        conn.row_factory = psycopg.rows.dict_row
+        migrator.run_migrations(conn)
 
-        self.pool = await psycopg.pool.SimpleConnectionPool(
-            minconn=2,
-            maxconn=3,
-            user='test',
-            password='test',
-            host='localhost:5432',
-            port='5432',
-            database='embedding'
-        )
+@app.on_event("shutdown")
+async def shutdown():
+    pool.close()
+    # cleanup
+    pass
 
-
-def create_app():
-
-    app = FastAPI()
-    db = EmbeddingDatabase()
-
-    @app.middleware("http")
-    async def db_session_middleware(request: Request, call_next):
-        request.state.pgpool = db.pool
-        response = await call_next(request)
-        return response
-
-    @app.on_event("startup")
-    async def startup():
-        await db.create_pool()
-     
-    @app.on_event("shutdown")
-    async def shutdown():
-        # cleanup
-        pass
+@app.get("/")
+def read_root(request: fastapi.Request):
+    with request.state.conn_pool.connection() as conn:
+        print(conn.execute("SELECT * FROM embeddings").fetchall())
+    return {"Hello": "World"}
 
 
+@app.get("/items/{item_id}")
+def read_item(item_id: int, q: typing.Union[str, None] = None):
+    return {"item_id": item_id, "q": q}
 
-    @app.get("/")
-    def read_root(request: Request):
-        print(request.state.pool)
-        return {"Hello": "World"}
+@app.post("/question/")
+def read_question(request: fastapi.Request, question: Question):
+    with request.state.conn_pool.connection() as conn:
+        # convert user query to vector
+        user_vec = stub_embed_user_query(question.query)
 
+        # lookup similar vectors in db
+        stub_get_similar_vectors(user_vec)
 
-    @app.get("/items/{item_id}")
-    def read_item(item_id: int, q: Union[str, None] = None):
-        return {"item_id": item_id, "q": q}
+        # pass off request to chatgpt
+        return stub_chatgpt_summorize(question.query, [])
 
-    @app.post("/question/")
-    def read_question(question: QuestionModel):
-        #Define our connection string
-        conn_string = "host='localhost:5432' dbname='embedding' user='test' password='test'"
+def stub_embed_user_query(query: str):
+    pass
 
-        # print the connection string we will use to connect
-        print("Connecting to database\n	->" + str(conn_string)) 
+def stub_get_similar_vectors(vec: any):
+    # res = conn.execute("SELECT * FROM embeddings ORDER BY embedding <=> %s LIMIT 5;", user_vec).fetchall()
+    pass
 
-        # get a connection, if a connect cannot be made an exception will be raised here
-        conn = psycopg.connect(conn_string)
-
-        # conn.cursor will return a cursor object, you can use this cursor to perform queries
-        cursor = conn.cursor()
-        print("Connected!\n")
-        
-
-
-        return question.question
-    
-    return app
-
-
-app = create_app()
+def stub_chatgpt_summorize(user_query: str, contexts: typing.List[typing.OrderedDict[str, str]]):
+    pass
