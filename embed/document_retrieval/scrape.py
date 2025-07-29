@@ -3,6 +3,8 @@ from llama_index.core.schema import Document
 import json
 import os
 from pathlib import Path
+import numpy as np
+import pandas as pd
 
 current_directory = os.getcwd()
 
@@ -25,19 +27,19 @@ def save_llama_docs_to_json(llama_docs: list[Document], output_path: str):
         json.dump(data, f, ensure_ascii=False, indent=2)
         print(f"✅ Saved: {output_path}")
 
-# for filename in os.listdir(folder_path):
-#     if filename.endswith(".pdf"):
-#         file_path = os.path.join(folder_path, filename)
+for filename in os.listdir(folder_path):
+    if filename.endswith(".pdf"):
+        file_path = os.path.join(folder_path, filename)
         
-#         try:
-#             print(f"Processing {file_path}...")
-#             llama_docs = llama_reader.load_data(file_path)
-#             json_path = Path(file_path).with_suffix('.json')
-#             save_llama_docs_to_json(llama_docs, json_path)
+        try:
+            print(f"Processing {file_path}...")
+            llama_docs = llama_reader.load_data(file_path)
+            json_path = Path(file_path).with_suffix('.json')
+            save_llama_docs_to_json(llama_docs, json_path)
             
             
-#         except Exception as e:
-#             print(f"Error processing {file_path}: {e}")
+        except Exception as e:
+            print(f"Error processing {file_path}: {e}")
 
 # ------------------------ 0.  install deps -----------------------------------
 # pip install "torch>=2.3" "transformers>=4.51" sentence-transformers==2.7 \
@@ -131,7 +133,7 @@ print("SentenceTransformer device:", model.device)
 
 # -------------------- 5.  Vectorize and print embeddings to screen ------------
 print("\n" + "="*60)
-print("VECTORIZING DOCUMENTS AND PRINTING EMBEDDINGS")
+print("VECTORIZING DOCUMENTS VIA QWEN EMBEDDINGS")
 print("="*60)
 
 # Get embeddings for all documents
@@ -139,15 +141,20 @@ print(f"\nGenerating embeddings for {len(docs)} documents...")
 embeddings = []
 
 for i, doc in enumerate(docs):
-    print(f"Processing document {i+1}/{len(docs)}: {doc.metadata.get('file_name', 'Unknown')}")
+    print(f"Processing document {i+1}/{len(docs)}: {doc.metadata.get('title', 'Unknown')}")
+    print(f"Page: {doc.metadata.get('page', 'Unknown')} of {doc.metadata.get('total_pages', 'Unknown')}")
     
     with model.truncate_sentence_embeddings(truncate_dim=2000):
         embedding = model.encode(doc.text)
+        print("Type:", type(embedding))
+        print("Shape:", getattr(embedding, 'shape', None))
+        print("Dtype:", getattr(embedding, 'dtype', None))
     embeddings.append({
         "document_index": i,
         "text_preview": doc.text[:100] + "..." if len(doc.text) > 100 else doc.text,
         "embedding_dimension": len(embedding),
-        "embedding_preview": embedding[:5].tolist(),  # Show first 5 values
+        "embedding_preview": embedding[:5].tolist(),  # Show first 5 values,
+        "embedding": embedding,
         "metadata": doc.metadata
     })
     
@@ -163,13 +170,44 @@ print("="*60)
 print(f"Total documents processed: {len(docs)}")
 print(f"Device used: {model.device}")
 
-# Show a few sample embeddings in detail
-print(f"\nSample embeddings (showing first 3):")
-for i, emb_info in enumerate(embeddings[:3]):
-    print(f"\nDocument {i+1}:")
-    print(f"  Text preview: {emb_info['text_preview']}")
-    print(f"  Embedding (first 10 values): {emb_info['embedding_preview']}")
-    print(f"  Metadata: {emb_info['metadata']}")
-
 print("\n✅ Document vectorization complete!")
 # -----------------------------------------------------------------------------
+# Prepare data for JSON and Parquet
+embeddings_for_json = []
+embeddings_for_parquet = []
+
+for emb_info in embeddings:
+    # Convert embedding to float16 for JSON (smaller size)
+    emb_low_precision = np.array(emb_info["embedding"], dtype=np.float16).tolist()
+    # For Parquet, keep as float32 (or float16 if you want even smaller)
+    emb_parquet = np.array(emb_info["embedding"], dtype=np.float32)
+    
+    # JSON version
+    embeddings_for_json.append({
+        "document_index": emb_info["document_index"],
+        "text_preview": emb_info["text_preview"],
+        "embedding_dimension": emb_info["embedding_dimension"],
+        "embedding": emb_low_precision,
+        "metadata": emb_info["metadata"]
+    })
+    # Parquet version (flatten metadata for tabular storage)
+    flat = {
+        "document_index": emb_info["document_index"],
+        "text_preview": emb_info["text_preview"],
+        "embedding_dimension": emb_info["embedding_dimension"],
+        **{f"embedding_{i}": v for i, v in enumerate(emb_parquet)},
+        **{f"meta_{k}": v for k, v in emb_info["metadata"].items()}
+    }
+    embeddings_for_parquet.append(flat)
+
+# Save JSON
+embedding_json_path = os.path.join(folder_path, "_embedding.json")
+with open(embedding_json_path, "w", encoding="utf-8") as f:
+    json.dump(embeddings_for_json, f, ensure_ascii=False, indent=2)
+print(f"✅ Saved embeddings to JSON: {embedding_json_path}")
+
+# Save Parquet
+embedding_parquet_path = os.path.join(folder_path, "_embedding.parquet")
+df = pd.DataFrame(embeddings_for_parquet)
+df.to_parquet(embedding_parquet_path, index=False)
+print(f"✅ Saved embeddings to Parquet: {embedding_parquet_path}")
